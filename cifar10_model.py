@@ -43,7 +43,7 @@ class Model(ModelDesc):
 
     def add_layer(name, input_l, final_channels, stride):
       shape = input_l.get_shape().as_list()
-      final_channels = math.round(final_channels)
+      final_channels = int(final_channels)
 
       with tf.variable_scope(name) as scope:
         c = BatchNorm('bn0', input_l)
@@ -61,28 +61,32 @@ class Model(ModelDesc):
 
         # pad residual with zero channels
         # TODO: check with ResNet if they pad with 75% zeros on first bottleneck block
-        shape[-2] = final_channels - shape[-2]
-        residual_padding = tf.zeros(shape, tf.float32)
-        residual = tf.concat((input_l, residual_padding), 2)
+        add_channels = final_channels*4 - shape[-1]
+        paddings = tf.constant([[0, 0], [0, 0], [0, 0], [0, add_channels]])
+        # residual_padding = tf.zeros(tf.shape(shape))
+        # residual = tf.concat((input_l, residual_padding), 2)
+        residual = tf.pad(input_l, paddings, "CONSTANT")
         # reduce map
-        if stride == 0:
+        if stride != 1:
           residual = AvgPooling('pool', residual, 2)
         # add
-        l = tf.add_n(c, residual)
+        l = tf.add(c, residual)
       return l
 
-    def pyramid_net(name):
-      n = (depth - 2)/9   # -2 transitional layers, /3 blocks, /3 bottleneck layers in each pyramid-net
+    def pyramid_net(depth, alpha):
+      n = (depth - 2)/9   # -2 first conv and FC layers, /3 blocks, /3 bottleneck layers in each pyramid-net
       add_channels = alpha / (3 * n)
 
       l = conv('conv0', image, 16, 1)
       l = BatchNorm('bn1', l)
 
+      output_channels = 16
       for i, block in enumerate(['block1', 'block2', 'block3']):
         with tf.variable_scope('block') as scope:
-          for j in range(n):
+          for j in range(int(n)):
             stride = 1 if i == 0 or j > 0 else 2  # apply stride=2 exactly twice between 1st-2nd and 2nd-3rd blocks
-            l = add_layer('block%d_%d' % (i+1, j), l, add_channels, stride)
+            output_channels += add_channels
+            l = add_layer('block%d_%d' % (i+1, j), l, output_channels, stride)
 
       l = BatchNorm('bnlast', l)
       l = tf.nn.relu(l)
@@ -91,7 +95,7 @@ class Model(ModelDesc):
 
       return logits
 
-    logits = pyramid_net("dense_net")
+    logits = pyramid_net(args.depth, args.alpha)
 
     prob = tf.nn.softmax(logits, name='output')
 
@@ -169,7 +173,8 @@ if __name__ == '__main__':
   parser.add_argument('--load', help='load model')
   parser.add_argument('--drop_1', default=150, help='Epoch to drop learning rate to 0.01.')  # nargs='*' in multi mode
   parser.add_argument('--drop_2', default=225, help='Epoch to drop learning rate to 0.001')
-  parser.add_argument('--depth', default=40, help='The depth of densenet')
+  parser.add_argument('--depth', default=110, help='The depth of the network')
+  parser.add_argument('--alpha', default=48, help='Defines additive extention from first to last layer')
   parser.add_argument('--max_epoch', default=300, help='max epoch')
   args = parser.parse_args()
 
