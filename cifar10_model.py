@@ -14,10 +14,33 @@ from tensorpack.tfutils.summary import *
 """
 CIFAR10 DenseNet example. See: https://arxiv.org/abs/1610.02915
 Code is developed based on Yuxin Wu's ResNet implementation: https://github.com/ppwwyyxx/tensorpack/tree/master/examples/ResNet
-"""
+
+Implementation details:
+- Use additive pyramid extention (regulated by parameter --alpha)
+- Use pyramidal bottleneck layer (Figure 1.e)
+- Zero initialization of initialization for pyramidal residuals
+- Use configuration 'd' with removing first RELU and with BN after final conv
+
+Parameters:
+LR: 0.1 cifar-10; 0.5 cifar-1000
+Optimizer: nesterov with 0.9 momentum
+weight decay: 0.0001
+dampening: 0
+BS: 128
+
+Imagenet params (for reference only):
+LR schedule: {0: 0.05, 60: 0.005, 90: 0.0005, 115: 0.00005}
+epochs: 120
+BS: 128
+alpha: 300"""
 # TODO: update runtime and actual performance
 
-BATCH_SIZE = 64
+BATCH_SIZE = 128
+WEIGHT_DECAY= 0.0001
+NESTEROV_MOMENTUM = 0.9
+LR_INITIAL = 0.1
+LR_DROP1 = 0.01
+LR_DROP2 = 0.001
 
 
 class Model(ModelDesc):
@@ -107,16 +130,18 @@ class Model(ModelDesc):
     add_moving_summary(tf.reduce_mean(wrong, name='train_error'))
 
     # weight decay on all W
-    wd_cost = tf.multiply(1e-4, regularize_cost('.*/W', tf.nn.l2_loss), name='wd_cost')
+    wd_cost = tf.multiply(WEIGHT_DECAY, regularize_cost('.*/W', tf.nn.l2_loss), name='wd_cost')
     add_moving_summary(cost, wd_cost)
 
     add_param_summary(('.*/W', ['histogram']))  # monitor W
     self.cost = tf.add_n([cost, wd_cost], name='cost')
 
   def _get_optimizer(self):
-    lr = tf.get_variable('learning_rate', initializer=0.1, trainable=False)
+    # CIFAR-10   lr: 0.1
+    # CIFAR-1000 lr: 0.5
+    lr = tf.get_variable('learning_rate', initializer=LR_INITIAL, trainable=False)
     tf.summary.scalar('learning_rate', lr)
-    return tf.train.MomentumOptimizer(lr, 0.9, use_nesterov=True)
+    return tf.train.MomentumOptimizer(lr, NESTEROV_MOMENTUM, use_nesterov=True)
 
 
 def get_data(train_or_test):
@@ -158,7 +183,7 @@ def get_config():
       InferenceRunner(dataset_test,
                       [ScalarStats('cost'), ClassificationError()]),
       ScheduledHyperParamSetter('learning_rate',
-                                [(1, 0.1), (args.drop_1, 0.01), (args.drop_2, 0.001)])
+                                [(1, 0.1), (args.drop_1, LR_DROP1), (args.drop_2, LR_DROP2)])
     ],
     model=Model(depth=args.depth),
     steps_per_epoch=steps_per_epoch,
