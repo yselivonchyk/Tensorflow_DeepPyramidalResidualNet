@@ -17,7 +17,8 @@ Code is developed based on Yuxin Wu's ResNet implementation: https://github.com/
 """
 # TODO: update runtime and actual performance
 
-BATCH_SIZE = 64
+BATCH_SIZE = 128
+WEIGHT_DECAY = 0.0001
 
 
 class Model(ModelDesc):
@@ -39,7 +40,8 @@ class Model(ModelDesc):
       # TODO: update weight init
       return Conv2D(name, l, channels, kernel, stride=stride,
                     nl=tf.identity, use_bias=False,
-                    W_init=tf.random_normal_initializer(stddev=np.sqrt(2.0 / 9 / channels)))
+                    W_init=tf.contrib.layers.variance_scaling_initializer(factor=2.0, mode='FAN_IN', uniform=False)
+                    )
 
     def add_layer(name, input_l, final_channels, stride):
       shape = input_l.get_shape().as_list()
@@ -107,7 +109,7 @@ class Model(ModelDesc):
     add_moving_summary(tf.reduce_mean(wrong, name='train_error'))
 
     # weight decay on all W
-    wd_cost = tf.multiply(1e-4, regularize_cost('.*/W', tf.nn.l2_loss), name='wd_cost')
+    wd_cost = tf.multiply(WEIGHT_DECAY, regularize_cost('.*/W', tf.nn.l2_loss), name='wd_cost')
     add_moving_summary(cost, wd_cost)
 
     add_param_summary(('.*/W', ['histogram']))  # monitor W
