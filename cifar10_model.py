@@ -36,7 +36,7 @@ alpha: 300"""
 # TODO: update runtime and actual performance
 
 BATCH_SIZE = 128
-WEIGHT_DECAY= 0.0001
+WEIGHT_DECAY = 0.0001
 NESTEROV_MOMENTUM = 0.9
 LR_INITIAL = 0.1
 LR_DROP1 = 0.01
